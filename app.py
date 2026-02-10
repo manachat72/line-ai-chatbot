@@ -9,8 +9,8 @@ app = Flask(__name__)
 
 # --- 1. ตั้งค่ากุญแจ (ใส่ Key ของคุณตรงนี้) ---
 # อย่าลืม! เอาเครื่องหมาย ' ' ครอบรหัสไว้ด้วยนะครับ
-LINE_ACCESS_TOKEN = 'dc2Kj2VlvEtlq/PUVw0O66R2PddrclTlljAy+IB79nfxjJQIkf03HfsLkpVCR82z6sDQ3w9tbFyCk7HHByhpVNMDevVtwdV3HO1+sgP3XUA6la1R3NkDAttp9Gn7e6RLTHRf6lKsDHWE4aYiq2RcZQdB04t89/1O/w1cDnyilFU='
-LINE_CHANNEL_SECRET = 'A81790990BA1D3C3710A897424A2F4EB'
+LINE_ACCESS_TOKEN = 'fMCZGijbneGdxQIA4aqp4DXIZmIJ+PggODKGlKR8QAct8gTYhgTaufzHMuED8ni76sDQ3w9tbFyCk7HHByhpVNMDevVtwdV3HO1+sgP3XUDx8A18yJPmvM+BsMkTT3tzeq+BATtcOYVs12lDkPvC3gdB04t89/1O/w1cDnyilFU='
+LINE_CHANNEL_SECRET = 'a81790990ba1d3c3710a897424a2f4eb'
 GEMINI_API_KEY = 'AIzaSyAxHWcJMqhTcQFmLCDhd8G8D-3pE1KU8Mg'
 
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
@@ -66,3 +66,4 @@ def handle_message(event):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
