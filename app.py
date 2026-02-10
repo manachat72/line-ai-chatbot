@@ -8,38 +8,24 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# --- 1. ดึงค่ากุญแจ ---
+# --- 1. ตั้งค่ากุญแจ ---
 LINE_ACCESS_TOKEN = os.environ.get('LINE_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
-# แก้บั๊ก URL ของ Database (แปลง postgres:// เป็น postgresql:// เพื่อความชัวร์)
+# แก้บั๊ก URL Database
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# --- 2. ตั้งค่า Gemini แบบปิด Safety Filter (สำคัญ!) ---
 genai.configure(api_key=GEMINI_API_KEY)
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# ตั้งค่าความปลอดภัยเป็น BLOCK_NONE (ปิดการบล็อก)
-safety_settings = [
-    {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
-    {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
-]
-
-model = genai.GenerativeModel(
-    model_name="gemini-1.5-flash",
-    safety_settings=safety_settings
-)
-
-# --- 3. ระบบ Database ---
+# --- 2. ระบบ Database ---
 def get_db_connection():
-    # เพิ่ม sslmode='require' เพื่อความปลอดภัยและเสถียร
     return psycopg2.connect(DATABASE_URL, sslmode='require')
 
 def init_db():
@@ -58,14 +44,14 @@ def init_db():
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ Database Connected & Initialized!")
+        print("✅ Database Ready!")
     except Exception as e:
-        print(f"❌ Init DB Error: {e}")
+        print(f"❌ Database Init Error: {e}")
 
 if DATABASE_URL:
     init_db()
 
-# --- 4. Webhook ---
+# --- 3. Webhook ---
 @app.route("/callback", methods=['POST'])
 def callback():
     signature = request.headers.get('X-Line-Signature')
@@ -81,17 +67,18 @@ def handle_message(event):
     user_msg = event.message.text
     user_id = event.source.user_id
     
+    # ✅ แก้ไข: ประกาศตัวแปรไว้ก่อน กันพัง!
+    bot_reply = "กำลังประมวลผล..." 
+
     try:
-        # ส่งให้ Gemini คิด
+        # 1. ให้ Gemini คิด
         response = model.generate_content(user_msg)
-        
-        # เช็คว่ามีคำตอบไหม (กัน Error กรณีโดนบล็อกเงียบๆ)
         if response.text:
-            bot_reply = response.text
+            bot_reply = response.text # อัปเดตคำตอบถ้าคิดออก
         else:
-            bot_reply = "ขออภัยครับ ฉันนึกคำตอบไม่ออก (No Response)"
-            
-        # บันทึกลง Database
+            bot_reply = "นึกไม่ออกครับ (No Text)"
+
+        # 2. เก็บลง Database
         if DATABASE_URL:
             try:
                 conn = get_db_connection()
@@ -104,13 +91,15 @@ def handle_message(event):
                 cur.close()
                 conn.close()
             except Exception as db_err:
-                print(f"❌ Database Save Error: {db_err}")
+                print(f"Database Error: {db_err}")
+                # ไม่ต้องแก้ bot_reply ถ้า Database พัง บอทจะได้ตอบ user ได้ปกติ
             
     except Exception as e:
-        # ฟ้อง Error เข้าแชทตรงๆ
-        bot_reply = f"System Error: {str(e)}"
-        print(f"❌ Critical Error: {e}")
+        # ถ้าพังตรง Gemini ให้บอก Error ไปเลย
+        print(f"Main Error: {e}")
+        bot_reply = f"ระบบขัดข้อง: {str(e)}"
 
+    # 3. ส่งข้อความกลับ (บรรทัดนี้จะไม่พังแล้ว เพราะ bot_reply มีค่าเสมอ)
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=bot_reply)
