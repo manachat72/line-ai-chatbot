@@ -80,7 +80,7 @@ def handle_message(event):
         conn.close()
         
     except Exception as e:
-        bot_reply = "ขออภัยครับ ระบบขัดข้อง"
+        ai_reply = f"เกิดข้อผิดพลาด: {str(e)}"  # <--- ให้มันบอกมาเลยว่าพังเพราะอะไร!
         print(f"Error: {e}")
 
     line_bot_api.reply_message(
@@ -91,3 +91,4 @@ def handle_message(event):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
