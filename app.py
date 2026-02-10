@@ -1,4 +1,5 @@
 import os
+import psycopg2
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -7,37 +8,50 @@ import google.generativeai as genai
 
 app = Flask(__name__)
 
-# --- 1. ดึงค่ากุญแจจาก Environment Variables (ปลอดภัยกว่าแปะโค้ดตรงๆ) ---
-# ต้องตั้งชื่อตัวแปรใน Render ให้ตรงกับในวงเล็บนะครับ
+# --- 1. ดึงกุญแจจาก Render ---
 LINE_ACCESS_TOKEN = os.environ.get('LINE_ACCESS_TOKEN')
 LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
-
-# ตรวจสอบว่ากุญแจมาครบไหม (เผื่อลืมตั้งค่า)
-if not all([LINE_ACCESS_TOKEN, LINE_CHANNEL_SECRET, GEMINI_API_KEY]):
-    print("Error: กุญแจ API ไม่ครบ กรุณาเช็ค Environment Variables ใน Render")
+DATABASE_URL = os.environ.get('DATABASE_URL') # กุญแจ Database
 
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
-
-# --- 2. ตั้งค่า Gemini AI ---
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # รุ่น Flash เร็วและฟรี
+model = genai.GenerativeModel('gemini-1.5-flash')
 
-# --- 3. บุคลิกของบอท (System Prompt) ---
-BOT_PERSONA = """
-คุณคือ 'จาวิส' ผู้ช่วย AI อัจฉริยะ
-- นิสัย: สุภาพ, เป็นมิตร, ชอบช่วยเหลือ
-- หน้าที่: ตอบคำถามผู้ใช้งานอย่างถูกต้องและกระชับ
-- ถ้าไม่รู้: ให้ตอบตามตรงว่าไม่ทราบ
-"""
+# --- 2. ฟังก์ชัน Database ---
+def get_db_connection():
+    return psycopg2.connect(DATABASE_URL)
 
+def init_db():
+    """สร้างตารางเก็บข้อมูลถ้ายังไม่มี"""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id SERIAL PRIMARY KEY,
+                user_id TEXT,
+                message TEXT,
+                reply TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        """)
+        conn.commit()
+        cur.close()
+        conn.close()
+        print("✅ Database Connected!")
+    except Exception as e:
+        print(f"❌ Database Error: {e}")
+
+# เริ่มระบบความจำทันทีที่เปิด
+init_db()
+
+# --- 3. ส่วนรับข้อความ ---
 @app.route("/callback", methods=['POST'])
 def callback():
-    # รับ Signature จาก LINE เพื่อยืนยันตัวตน
     signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
-
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
@@ -46,24 +60,32 @@ def callback():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    user_text = event.message.text
+    user_msg = event.message.text
+    user_id = event.source.user_id
     
     try:
-        # รวมคำสั่งบุคลิก + ข้อความลูกค้า
-        prompt = f"{BOT_PERSONA}\n\nUser: {user_text}"
+        # ให้ Gemini คิด
+        response = model.generate_content(user_msg)
+        bot_reply = response.text
         
-        # ส่งให้ Gemini คิด
-        response = model.generate_content(prompt)
-        ai_reply = response.text
+        # 💾 บันทึกลง Database
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT INTO chat_history (user_id, message, reply) VALUES (%s, %s, %s)",
+            (user_id, user_msg, bot_reply)
+        )
+        conn.commit()
+        cur.close()
+        conn.close()
         
     except Exception as e:
-        ai_reply = "ขออภัยครับ ระบบประมวลผลขัดข้องชั่วคราว"
+        bot_reply = "ขออภัยครับ ระบบขัดข้อง"
         print(f"Error: {e}")
 
-    # ส่งข้อความตอบกลับทาง LINE
     line_bot_api.reply_message(
         event.reply_token,
-        TextSendMessage(text=ai_reply)
+        TextSendMessage(text=bot_reply)
     )
 
 if __name__ == "__main__":
