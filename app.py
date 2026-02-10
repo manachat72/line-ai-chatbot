@@ -23,8 +23,8 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# ✅ แก้ไขจุดที่ 1: เปลี่ยนเป็น gemini-pro (เสถียรสุด ไม่เจอ Error 404)
-model = genai.GenerativeModel('gemini-pro')
+# ใช้รุ่น 1.5 Pro (ฉลาดและใหม่ที่สุด)
+model = genai.GenerativeModel('gemini-1.5-pro')
 
 # --- 2. ระบบ Database ---
 def get_db_connection():
@@ -110,3 +110,4 @@ def handle_message(event):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
