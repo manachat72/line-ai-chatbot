@@ -23,8 +23,12 @@ handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# ใช้รุ่น 1.5 Pro (ฉลาดและใหม่ที่สุด)
-model = genai.GenerativeModel('gemini-1.5-pro')
+# แก้ไขการเรียกโมเดลใน app.py
+# ใช้ชื่อรุ่นที่ถูกต้องตามคู่มือล่าสุด
+model = genai.GenerativeModel(model_name="gemini-1.5-flash") 
+
+# หรือถ้าต้องการใช้รุ่น Pro ให้ใช้ชื่อนี้:
+# model = genai.GenerativeModel(model_name="gemini-1.5-pro")
 
 # --- 2. ระบบ Database ---
 def get_db_connection():
@@ -110,4 +114,5 @@ def handle_message(event):
 if __name__ == "__main__":
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
 
