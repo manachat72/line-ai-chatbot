@@ -1,30 +1,40 @@
-import os
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 import google.generativeai as genai
+import os
 
 app = Flask(__name__)
 
-# ดึงค่า Config จาก Environment Variables (ตั้งค่าใน Cloud)
-LINE_ACCESS_TOKEN = os.environ.get('LINE_ACCESS_TOKEN')
-LINE_CHANNEL_SECRET = os.environ.get('LINE_CHANNEL_SECRET')
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY')
+# --- 1. ตั้งค่ากุญแจ (ใส่ Key ของคุณตรงนี้) ---
+# อย่าลืม! เอาเครื่องหมาย ' ' ครอบรหัสไว้ด้วยนะครับ
+LINE_ACCESS_TOKEN = 'dc2Kj2VlvEtlq/PUVw0O66R2PddrclTlljAy+IB79nfxjJQIkf03HfsLkpVCR82z6sDQ3w9tbFyCk7HHByhpVNMDevVtwdV3HO1+sgP3XUA6la1R3NkDAttp9Gn7e6RLTHRf6lKsDHWE4aYiq2RcZQdB04t89/1O/w1cDnyilFU='
+LINE_CHANNEL_SECRET = 'A81790990BA1D3C3710A897424A2F4EB'
+GEMINI_API_KEY = 'AIzaSyAxHWcJMqhTcQFmLCDhd8G8D-3pE1KU8Mg'
 
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler = WebhookHandler(LINE_CHANNEL_SECRET)
 
-# ตั้งค่า Gemini AI
+# ตั้งค่า Gemini
 genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel('gemini-1.5-flash') # ใช้รุ่น Flash เพราะเร็วและประหยัด
+# เลือกรุ่นสมอง (Flash เร็วและฟรี)
+model = genai.GenerativeModel('gemini-1.5-flash')
+
+# --- 2. พื้นที่ "สอน" บอท (Prompt) ---
+# แก้ไขนิสัยบอทตรงนี้ได้เลยครับ
+BOT_PERSONA = """
+คุณคือผู้ช่วยอัจฉริยะชื่อ 'จาวิส'
+- นิสัย: สุภาพ, มีอารมณ์ขันเล็กน้อย, และมีความรู้รอบตัวสูง
+- หน้าที่: ตอบคำถามและช่วยเหลือผู้ใช้งานอย่างเต็มที่
+- ถ้าไม่รู้คำตอบ: ให้ตอบว่า 'ขออภัยครับ เรื่องนี้ผมยังไม่มีข้อมูล'
+- ตอบสั้นกระชับ ไม่เยิ่นเย้อ
+"""
 
 @app.route("/callback", methods=['POST'])
 def callback():
-    # รับ Signature จาก Header เพื่อตรวจสอบว่าเป็นข้อความจาก Line จริง
     signature = request.headers.get('X-Line-Signature')
     body = request.get_data(as_text=True)
-
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
@@ -36,14 +46,18 @@ def handle_message(event):
     user_text = event.message.text
     
     try:
-        # ส่งข้อความไปหา Gemini AI
-        response = model.generate_content(user_text)
+        # รวมคำสั่งสอน (Persona) เข้ากับข้อความลูกค้า
+        prompt = BOT_PERSONA + "\n\nคำถามจากผู้ใช้: " + user_text
+        
+        # ส่งไปให้ Gemini คิด
+        response = model.generate_content(prompt)
         ai_reply = response.text
+        
     except Exception as e:
-        ai_reply = "ขออภัยครับ ระบบประมวลผลขัดข้อง"
+        ai_reply = "ขออภัยครับ ระบบประมวลผลขัดข้องชั่วคราว"
         print(f"Error: {e}")
 
-    # ตอบกลับไปยังผู้ใช้
+    # ส่งคำตอบกลับเข้า LINE
     line_bot_api.reply_message(
         event.reply_token,
         TextSendMessage(text=ai_reply)
